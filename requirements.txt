@@ -2,4 +2,4 @@ groq
 python-telegram-bot
 requests
 schedule
-python-dontenv
+python-dotenv
