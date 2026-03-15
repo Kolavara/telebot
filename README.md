@@ -170,5 +170,4 @@ Twitter cookies expire every few weeks. If the bot stops fetching tweets:
 ---
 
 ## 📝 License
-
-MIT — free to use and modify.
+This project is for personal use only.
