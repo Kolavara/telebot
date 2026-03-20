@@ -74,7 +74,7 @@ def save_watchlist(accounts):
         json.dump(accounts, f)
 
 TWITTER_ACCOUNTS = load_watchlist()
-SUMMARY_TIME = "22:00"
+SUMMARY_TIME = "16:30"
 
 ARYAN_PROMPT = """You are Aryan, an elite AI & Tech researcher.
 You ONLY care about Artificial Intelligence, machine learning, LLMs, and tech.
