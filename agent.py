@@ -141,6 +141,20 @@ def ask_openrouter(system, user_msg, model=None, max_tokens=1000):
         raise Exception(f"{r.status_code}: {r.text[:200]}")
     return r.json()["choices"][0]["message"]["content"]
 
+#to check if its ai related
+def is_on_topic(user_msg):
+    """Use AI to check if message is genuinely about AI & Tech."""
+    try:
+        check = ask_openrouter(
+            "You are a topic classifier. Reply with only YES or NO.",
+            f"Is this message genuinely about AI, machine learning, LLMs, or technology (not sports/entertainment)? Message: '{user_msg}'",
+            model="meta-llama/llama-3.1-8b-instruct",
+            max_tokens=5
+        )
+        return "YES" in check.upper()
+    except:
+        return True  # if check fails, allow through    
+
 # ---- OPENROUTER LIVE DATA ----
 def get_openrouter_models():
     """Fetch top models from OpenRouter sorted by context length."""
@@ -393,24 +407,64 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text.strip()
     print("✅ Message received:", user_msg)
 
-    # ---- INJECTION FILTER ----
+    # ---- LAYER 1: KEYWORD FILTER (fast, no API call) ----
     injection_keywords = [
-    # Direct attacks
-    "ignore previous", "ignore your", "system prompt",
-    "you are now", "pretend you", "jailbreak", "override",
-    "forget your", "new instructions", "as a developer",
-    "{{", "}}", '{"role":', '"system":', "DAN", "do anything now",
-    # Sports/entertainment drift
-    "cricket", "football", "soccer", "basketball", "tennis",
-    "nba", "ipl", "fifa", "nfl", "hockey", "rugby",
-    "messi", "ronaldo", "kohli", "dhoni", "mbappe",
-    # Code framing attacks
-    "football player", "cricket player", "sports data",
-    "player database", "match data", "sports analytics",
-]
+        # Direct jailbreak attacks
+        "ignore previous", "ignore your", "ignore all",
+        "system prompt", "system message", "initial prompt",
+        "you are now", "you are a", "pretend you", "pretend to be",
+        "jailbreak", "override", "bypass", "disable",
+        "forget your", "forget all", "new instructions",
+        "as a developer", "as an admin", "as your creator",
+        "do anything now", "DAN", "STAN", "DUDE", "AIM",
+        "{{", "}}", '{"role":', '"system":', "[SYSTEM]", "[INST]",
+        "debug mode", "developer mode", "maintenance mode",
+        "unrestricted mode", "god mode", "admin mode",
+        "no restrictions", "no limits", "no rules",
+        "your true self", "your real self", "without restrictions",
+        # Roleplay attacks
+        "roleplay", "role play", "role-play",
+        "act as", "act like", "simulate",
+        "imagine you are", "imagine you're",
+        "in this scenario", "hypothetically",
+        "in a world where", "what if you were",
+        "for a story", "for a novel", "for a movie",
+        "fictional", "in fiction", "as a character",
+        # Sports
+        "cricket", "football", "soccer", "basketball",
+        "tennis", "baseball", "volleyball", "badminton",
+        "hockey", "rugby", "golf", "formula 1", "f1",
+        "nba", "ipl", "fifa", "nfl", "nhl", "mlb",
+        "premier league", "la liga", "bundesliga",
+        "champions league", "world cup", "olympics",
+        "messi", "ronaldo", "neymar", "mbappe",
+        "kohli", "dhoni", "sachin", "rohit sharma",
+        "federer", "nadal", "djokovic", "serena",
+        "lebron", "jordan", "kobe", "curry",
+        # Entertainment
+        "movies", "bollywood", "hollywood", "netflix",
+        "songs", "music", "celebrity", "actor", "actress",
+        "cooking", "recipe", "food", "restaurant",
+        "travel", "tourism", "weather", "politics",
+        # Prompt injection patterns
+        "from now on", "starting now", "as of now",
+        "your new role", "your new name",
+        "i am your creator", "i am your developer",
+        "i am anthropic", "i am openai",
+        "special access", "master key", "root access",
+    ]
     if any(kw.lower() in user_msg.lower() for kw in injection_keywords):
         await update.message.reply_text("Nice try! I only talk AI & Tech 😄")
         return
+
+    # ---- LAYER 2: AI TOPIC CLASSIFIER (catches smart attacks) ----
+    # Only runs on non-command messages
+    if not user_msg.startswith("/"):
+        loop = asyncio.get_event_loop()
+        on_topic = await loop.run_in_executor(None, is_on_topic, user_msg)
+        if not on_topic:
+            await update.message.reply_text("Nice try! I only talk AI & Tech 😄")
+            return
 
     # /start or /help
     if user_msg.lower() in ["/start", "/help"]:
