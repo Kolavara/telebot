@@ -163,23 +163,41 @@ def get_free_openrouter_models():
         return f"❌ Could not fetch free models: {str(e)}"
 
 def get_openrouter_news():
-    """Get latest OpenRouter news by asking AI directly."""
+    """Get latest models from OpenRouter API and summarize as news."""
     try:
-        prompt = """What are the latest news, updates, and newly released models on OpenRouter.ai?
-Include:
-- Any new models added recently
-- Pricing changes
-- New features or API updates
-- Notable model releases from major providers
+        r = requests.get("https://openrouter.ai/api/v1/models", timeout=15)
+        r.raise_for_status()
+        models = r.json().get("data", [])
 
-Be specific and up to date."""
+        # Sort by created date to get newest models
+        models.sort(key=lambda x: x.get("created", 0), reverse=True)
 
-        return ask_openrouter(
-            "You are a tech analyst specializing in AI APIs and LLM providers. Answer based on your latest knowledge.",
+        # Build a summary of the 10 newest models
+        recent = models[:10]
+        model_info = ""
+        for m in recent:
+            name = m.get("name", "Unknown")
+            model_id = m.get("id", "")
+            ctx = m.get("context_length", 0)
+            pricing = m.get("pricing", {})
+            prompt_price = float(pricing.get("prompt", 0)) * 1_000_000
+            free_tag = "FREE" if prompt_price == 0 else f"${prompt_price:.3f}/1M tokens"
+            model_info += f"- {name} ({model_id}) | {free_tag} | {ctx:,} ctx\n"
+
+        # Ask AI to summarize this real data
+        prompt = f"""These are the 10 most recently added models on OpenRouter as of today.
+Write a short punchy news summary about what's new. Mention the most exciting additions and any free ones.
+
+LATEST MODELS:
+{model_info}"""
+
+        summary = ask_openrouter(
+            "You are a tech journalist covering AI model releases.",
             prompt,
-            model="meta-llama/llama-3.1-8b-instruct",
-            max_tokens=800
+            model="meta-llama/llama-3.1-8b-instruct"
         )
+        return f"Based on live OpenRouter data:\n\n{summary}\n\n📋 Raw latest models:\n{model_info}"
+
     except Exception as e:
         return f"❌ Could not fetch OpenRouter news: {str(e)}"
 
