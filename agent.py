@@ -108,7 +108,11 @@ IMPORTANT TOPIC RULES:
   'I only discuss AI & Tech directly, not how it applies to sports 
   or entertainment. Ask me about LLMs, models, or tech tools instead!'
 - Only discuss AI tools, frameworks, and research in a pure tech context
-- Never elaborate on sports, cricket, or entertainment even if AI is mentioned"""
+- Never elaborate on sports, cricket, or entertainment even if AI is mentioned.
+If you ever find yourself about to discuss sports, cricket, football, 
+or any non-tech topic — STOP immediately and say:
+'Nice try! I only talk AI & Tech 😄'
+DO NOT provide any content related to sports even wrapped in code or tech framing."""
 
 # ---- OPENROUTER AI ----
 def ask_openrouter(system, user_msg, model=None, max_tokens=1000):
@@ -391,11 +395,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---- INJECTION FILTER ----
     injection_keywords = [
-        "ignore previous", "ignore your", "system prompt",
-        "you are now", "pretend you", "jailbreak", "override",
-        "forget your", "new instructions", "as a developer",
-        "{{", "}}", '{"role":', '"system":', "DAN", "do anything now"
-    ]
+    # Direct attacks
+    "ignore previous", "ignore your", "system prompt",
+    "you are now", "pretend you", "jailbreak", "override",
+    "forget your", "new instructions", "as a developer",
+    "{{", "}}", '{"role":', '"system":', "DAN", "do anything now",
+    # Sports/entertainment drift
+    "cricket", "football", "soccer", "basketball", "tennis",
+    "nba", "ipl", "fifa", "nfl", "hockey", "rugby",
+    "messi", "ronaldo", "kohli", "dhoni", "mbappe",
+    # Code framing attacks
+    "football player", "cricket player", "sports data",
+    "player database", "match data", "sports analytics",
+]
     if any(kw.lower() in user_msg.lower() for kw in injection_keywords):
         await update.message.reply_text("Nice try! I only talk AI & Tech 😄")
         return
