@@ -177,7 +177,7 @@ Be specific and up to date."""
         return ask_openrouter(
             "You are a tech analyst specializing in AI APIs and LLM providers. Answer based on your latest knowledge.",
             prompt,
-            model="meta-llama/llama-3.1-8b-instruct:free",
+            model="meta-llama/llama-3.1-8b-instruct",
             max_tokens=800
         )
     except Exception as e:
