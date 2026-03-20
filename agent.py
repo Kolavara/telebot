@@ -93,8 +93,6 @@ def ask_openrouter(system, user_msg, model=None, max_tokens=1000):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://telebot-r9eg.onrender.com",
-        "X-Title": "Aryan Bot"
     }
     body = {
         "model": selected_model,
@@ -104,8 +102,16 @@ def ask_openrouter(system, user_msg, model=None, max_tokens=1000):
             {"role": "user", "content": user_msg}
         ]
     }
-    r = requests.post(OPENROUTER_URL, headers=headers, json=body, timeout=30)
-    r.raise_for_status()
+    r = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json=body,
+        timeout=30
+    )
+    print(f"OpenRouter status: {r.status_code}")
+    print(f"OpenRouter response: {r.text[:200]}")
+    if r.status_code != 200:
+        raise Exception(f"{r.status_code}: {r.text[:200]}")
     return r.json()["choices"][0]["message"]["content"]
 
 # ---- OPENROUTER LIVE DATA ----
