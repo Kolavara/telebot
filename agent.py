@@ -158,22 +158,22 @@ def get_free_openrouter_models():
         return f"❌ Could not fetch free models: {str(e)}"
 
 def get_openrouter_news():
-    """Summarize latest OpenRouter changelog using AI."""
+    """Get latest OpenRouter news by asking AI directly."""
     try:
-        r = requests.get("https://openrouter.ai/changelog", timeout=15)
-        r.raise_for_status()
+        prompt = """What are the latest news, updates, and newly released models on OpenRouter.ai?
+Include:
+- Any new models added recently
+- Pricing changes
+- New features or API updates
+- Notable model releases from major providers
 
-        prompt = f"""You are a tech news analyst.
-Based on the OpenRouter changelog page content below, summarize the 5 most recent updates, 
-new model additions, and important announcements. Be concise and punchy.
-
-PAGE CONTENT (first 3000 chars):
-{r.text[:3000]}"""
+Be specific and up to date."""
 
         return ask_openrouter(
-            "You are a tech news analyst specializing in AI models and APIs.",
+            "You are a tech analyst specializing in AI APIs and LLM providers. Answer based on your latest knowledge.",
             prompt,
-            model="meta-llama/llama-3.1-8b-instruct:free"
+            model="meta-llama/llama-3.1-8b-instruct:free",
+            max_tokens=800
         )
     except Exception as e:
         return f"❌ Could not fetch OpenRouter news: {str(e)}"
