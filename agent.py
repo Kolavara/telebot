@@ -1,4 +1,3 @@
-# ↓ PASTE HERE — very first lines of the file
 import os
 import schedule
 import time
@@ -108,6 +107,76 @@ def ask_openrouter(system, user_msg, model=None, max_tokens=1000):
     r = requests.post(OPENROUTER_URL, headers=headers, json=body, timeout=30)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
+
+# ---- OPENROUTER LIVE DATA ----
+def get_openrouter_models():
+    """Fetch top models from OpenRouter sorted by context length."""
+    try:
+        r = requests.get("https://openrouter.ai/api/v1/models", timeout=15)
+        r.raise_for_status()
+        models = r.json().get("data", [])
+
+        # Sort by context length as proxy for capability
+        models.sort(key=lambda x: x.get("context_length", 0), reverse=True)
+
+        result = "🔥 Top Models on OpenRouter right now:\n\n"
+        for m in models[:15]:
+            name = m.get("name", "Unknown")
+            model_id = m.get("id", "")
+            ctx = m.get("context_length", 0)
+            pricing = m.get("pricing", {})
+            prompt_price = float(pricing.get("prompt", 0)) * 1_000_000
+            is_free = prompt_price == 0
+            free_tag = "FREE" if is_free else f"${prompt_price:.2f}/1M tokens"
+            result += f"• {name}\n  ID: {model_id}\n  {free_tag} | {ctx:,} ctx\n\n"
+
+        return result
+    except Exception as e:
+        return f"❌ Could not fetch models: {str(e)}"
+
+def get_free_openrouter_models():
+    """Fetch only free models from OpenRouter."""
+    try:
+        r = requests.get("https://openrouter.ai/api/v1/models", timeout=15)
+        r.raise_for_status()
+        models = r.json().get("data", [])
+
+        free_models = [
+            m for m in models
+            if float(m.get("pricing", {}).get("prompt", 1)) == 0
+        ]
+
+        result = f"🆓 Free Models on OpenRouter ({len(free_models)} total):\n\n"
+        for m in free_models:
+            name = m.get("name", "Unknown")
+            model_id = m.get("id", "")
+            ctx = m.get("context_length", 0)
+            result += f"• {name}\n  ID: {model_id}\n  {ctx:,} ctx\n\n"
+
+        return result
+    except Exception as e:
+        return f"❌ Could not fetch free models: {str(e)}"
+
+def get_openrouter_news():
+    """Summarize latest OpenRouter changelog using AI."""
+    try:
+        r = requests.get("https://openrouter.ai/changelog", timeout=15)
+        r.raise_for_status()
+
+        prompt = f"""You are a tech news analyst.
+Based on the OpenRouter changelog page content below, summarize the 5 most recent updates, 
+new model additions, and important announcements. Be concise and punchy.
+
+PAGE CONTENT (first 3000 chars):
+{r.text[:3000]}"""
+
+        return ask_openrouter(
+            "You are a tech news analyst specializing in AI models and APIs.",
+            prompt,
+            model="meta-llama/llama-3.1-8b-instruct:free"
+        )
+    except Exception as e:
+        return f"❌ Could not fetch OpenRouter news: {str(e)}"
 
 # ---- TWITTER SESSION ----
 def get_twitter_session():
@@ -273,6 +342,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text.strip()
     print("✅ Message received:", user_msg)
 
+    # /start or /help
+    if user_msg.lower() in ["/start", "/help"]:
+        help_text = (
+            "🤖 Aryan Bot — AI & Tech Research Agent\n\n"
+            "TWITTER\n"
+            "/list — show watchlist\n"
+            "/add <username> — track a Twitter account\n"
+            "/remove <username> — untrack an account\n"
+            "/digest — instant Twitter digest\n\n"
+            "OPENROUTER\n"
+            "/ormodels — top models right now\n"
+            "/orfree — all free models\n"
+            "/ornews — latest OpenRouter news\n"
+            "/models — your saved model shortcuts\n"
+            "/model <name> — switch AI model\n\n"
+            "AI CHAT\n"
+            "Just type any AI & Tech question!"
+        )
+        await update.message.reply_text(help_text)
+        return
+
     # /list
     if user_msg.lower() == "/list":
         if not TWITTER_ACCOUNTS:
@@ -322,18 +412,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         loop = asyncio.get_event_loop()
         digest = await loop.run_in_executor(None, build_twitter_digest)
         try:
-            await update.message.reply_text(f"🤖 *AI & Tech Digest*\n\n{digest}", parse_mode='Markdown')
+            await update.message.reply_text(f"🤖 AI & Tech Digest\n\n{digest}")
         except Exception:
             await update.message.reply_text(f"🤖 AI & Tech Digest\n\n{digest}")
         return
 
-    # /models — show all available models
+    # /ormodels — top models on OpenRouter
+    if user_msg.lower() == "/ormodels":
+        await update.message.reply_text("⏳ Fetching live models from OpenRouter...")
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, get_openrouter_models)
+        await update.message.reply_text(result)
+        return
+
+    # /orfree — only free models
+    if user_msg.lower() == "/orfree":
+        await update.message.reply_text("⏳ Fetching free models from OpenRouter...")
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, get_free_openrouter_models)
+        await update.message.reply_text(result)
+        return
+
+    # /ornews — latest OpenRouter news
+    if user_msg.lower() == "/ornews":
+        await update.message.reply_text("⏳ Fetching latest OpenRouter news...")
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, get_openrouter_news)
+        await update.message.reply_text(f"📰 OpenRouter Latest News\n\n{result}")
+        return
+
+    # /models — show saved model shortcuts
     if user_msg.lower() == "/models":
         model_list = "\n".join([f"• {k} → {v}" for k, v in AVAILABLE_MODELS.items()])
         await update.message.reply_text(
             f"🤖 Current model: {CURRENT_MODEL}\n\n"
-            f"Available free models:\n{model_list}\n\n"
-            f"Switch with: /model llama"
+            f"Saved shortcuts (all free):\n{model_list}\n\n"
+            f"Switch with: /model llama\n"
+            f"See ALL OpenRouter models: /ormodels\n"
+            f"See free models only: /orfree"
         )
         return
 
@@ -345,10 +461,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Model switched to:\n{CURRENT_MODEL}")
         else:
             model_list = "\n".join([f"• {k}" for k in AVAILABLE_MODELS.keys()])
-            await update.message.reply_text(f"❌ Unknown model. Choose from:\n{model_list}")
+            await update.message.reply_text(
+                f"❌ Unknown shortcut. Choose from:\n{model_list}\n\n"
+                f"Or use /orfree to find any free model ID and paste it directly."
+            )
         return
 
-    # regular question → OpenRouter
+    # regular question → OpenRouter AI
     if not user_msg.startswith("/"):
         try:
             reply = ask_openrouter(ARYAN_PROMPT, user_msg)
@@ -385,6 +504,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
     app.add_handler(CommandHandler("start", handle_message))
+    app.add_handler(CommandHandler("help", handle_message))
 
     t_sched = threading.Thread(target=run_scheduler, daemon=True)
     t_sched.start()
