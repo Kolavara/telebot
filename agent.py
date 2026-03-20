@@ -48,9 +48,9 @@ CURRENT_MODEL = "meta-llama/llama-3.1-8b-instruct"
 AVAILABLE_MODELS = {
     "llama":   "meta-llama/llama-3.1-8b-instruct",
     "mistral": "mistralai/mistral-7b-instruct",
-    "gemma":   "google/gemma-2-9b-it:free",
-    "qwen":    "qwen/qwen-2-7b-instruct:free",
-    "phi":     "microsoft/phi-3-mini-128k-instruct:free",
+    "gemma":   "google/gemma-2-9b-it",
+    "qwen":    "qwen/qwen-2-7b-instruct",
+    "phi":     "microsoft/phi-3-mini-128k-instruct",
 }
 WATCHLIST_FILE = "watchlist.json"
 
