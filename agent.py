@@ -9,7 +9,6 @@ import json
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
-from groq import Groq
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CommandHandler
 
@@ -18,7 +17,7 @@ class PingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Dwight is alive.")
+        self.wfile.write(b"Aryan is alive.")
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
@@ -37,10 +36,23 @@ Thread(target=run_ping_server, daemon=True).start()
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AUTH_TOKEN = os.getenv("TWITTER_AUTH_TOKEN")
 CT0 = os.getenv("TWITTER_CT0")
 YOUR_TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "123456789")
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# ---- MODEL SELECTION ----
+CURRENT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+
+AVAILABLE_MODELS = {
+    "llama":   "meta-llama/llama-3.1-8b-instruct:free",
+    "mistral": "mistralai/mistral-7b-instruct:free",
+    "gemma":   "google/gemma-2-9b-it:free",
+    "qwen":    "qwen/qwen-2-7b-instruct:free",
+    "phi":     "microsoft/phi-3-mini-128k-instruct:free",
+}
 
 WATCHLIST_FILE = "watchlist.json"
 
@@ -65,7 +77,6 @@ def save_watchlist(accounts):
 
 TWITTER_ACCOUNTS = load_watchlist()
 SUMMARY_TIME = "22:00"
-client = Groq(api_key=GROQ_API_KEY)
 
 ARYAN_PROMPT = """You are Aryan, an elite AI & Tech researcher.
 You ONLY care about Artificial Intelligence, machine learning, LLMs, and tech.
@@ -77,17 +88,28 @@ For research questions, provide:
 - Your strong, confident take
 You are thorough, intense, and never stop until the answer is complete."""
 
-def ask_groq(system, user_msg, max_tokens=1000):
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        max_tokens=max_tokens,
-        messages=[
+# ---- OPENROUTER AI ----
+def ask_openrouter(system, user_msg, model=None, max_tokens=1000):
+    selected_model = model or CURRENT_MODEL
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://telebot-r9eg.onrender.com",
+        "X-Title": "Aryan Bot"
+    }
+    body = {
+        "model": selected_model,
+        "max_tokens": max_tokens,
+        "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user_msg}
         ]
-    )
-    return response.choices[0].message.content
+    }
+    r = requests.post(OPENROUTER_URL, headers=headers, json=body, timeout=30)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
 
+# ---- TWITTER SESSION ----
 def get_twitter_session():
     session = requests.Session()
     cookies = {"auth_token": AUTH_TOKEN, "ct0": CT0}
@@ -234,11 +256,11 @@ def build_twitter_digest():
     if valid_count == 0:
         return "Could not fetch any tweets. Your Twitter cookies may have expired.\n\nTo fix:\n1. Open Chrome and go to x.com\n2. Press F12 > Application > Cookies > x.com\n3. Copy auth_token and ct0\n4. Update your environment variables\n5. Restart the bot"
     summary_prompt = "You are a sharp AI & Tech analyst. Summarize these tweets into a clean daily digest. Group by theme, highlight the most important insights, keep it concise and punchy."
-    return ask_groq(summary_prompt, f"Today's tweets:\n\n{all_tweets}\n\nWrite the digest.")
+    return ask_openrouter(summary_prompt, f"Today's tweets:\n\n{all_tweets}\n\nWrite the digest.")
 
 # ---- HANDLE TELEGRAM MESSAGES ----
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global YOUR_TELEGRAM_CHAT_ID
+    global YOUR_TELEGRAM_CHAT_ID, CURRENT_MODEL
     if not update.message:
         return
     if update.message.chat_id:
@@ -251,6 +273,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text.strip()
     print("✅ Message received:", user_msg)
 
+    # /list
     if user_msg.lower() == "/list":
         if not TWITTER_ACCOUNTS:
             await update.message.reply_text("📋 Your watchlist is currently empty.")
@@ -259,6 +282,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"📋 Your watchlist:\n{accounts}")
         return
 
+    # /add
     if user_msg.lower().startswith("/add "):
         new_account = user_msg[5:].strip().replace("@", "")
         if new_account:
@@ -276,6 +300,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"ℹ️ @{new_account} is already in the watchlist.")
         return
 
+    # /remove
     if user_msg.lower().startswith("/remove "):
         remove_account = user_msg[8:].strip().replace("@", "")
         if remove_account:
@@ -288,6 +313,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"⚠️ Could not find @{remove_account} in the watchlist.")
         return
 
+    # /digest
     if user_msg.lower() == "/digest":
         if not TWITTER_ACCOUNTS:
             await update.message.reply_text("⚠️ Your watchlist is empty! Add accounts using /add username")
@@ -301,9 +327,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"🤖 AI & Tech Digest\n\n{digest}")
         return
 
+    # /models — show all available models
+    if user_msg.lower() == "/models":
+        model_list = "\n".join([f"• {k} → {v}" for k, v in AVAILABLE_MODELS.items()])
+        await update.message.reply_text(
+            f"🤖 Current model: {CURRENT_MODEL}\n\n"
+            f"Available free models:\n{model_list}\n\n"
+            f"Switch with: /model llama"
+        )
+        return
+
+    # /model — switch model
+    if user_msg.lower().startswith("/model "):
+        name = user_msg[7:].strip().lower()
+        if name in AVAILABLE_MODELS:
+            CURRENT_MODEL = AVAILABLE_MODELS[name]
+            await update.message.reply_text(f"✅ Model switched to:\n{CURRENT_MODEL}")
+        else:
+            model_list = "\n".join([f"• {k}" for k in AVAILABLE_MODELS.keys()])
+            await update.message.reply_text(f"❌ Unknown model. Choose from:\n{model_list}")
+        return
+
+    # regular question → OpenRouter
     if not user_msg.startswith("/"):
-        reply = ask_groq(ARYAN_PROMPT, user_msg)
-        await update.message.reply_text(reply)
+        try:
+            reply = ask_openrouter(ARYAN_PROMPT, user_msg)
+            await update.message.reply_text(reply)
+        except Exception as e:
+            await update.message.reply_text(f"❌ AI error: {str(e)}\nTry /model llama to reset.")
+    return
 
 # ---- SCHEDULER ----
 def run_scheduler():
@@ -326,8 +378,8 @@ def run_scheduler():
 
 # ---- MAIN ----
 def main():
-    if not TELEGRAM_TOKEN or not GROQ_API_KEY:
-        print("❌ Missing tokens!")
+    if not TELEGRAM_TOKEN or not OPENROUTER_API_KEY:
+        print("❌ Missing tokens! Make sure TELEGRAM_BOT_TOKEN and OPENROUTER_API_KEY are set.")
         return
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -338,6 +390,7 @@ def main():
     t_sched.start()
 
     print("🚀 Aryan is online!")
+    print(f"🤖 Model: {CURRENT_MODEL}")
     print(f"📋 Watchlist: {', '.join(['@'+a for a in TWITTER_ACCOUNTS])}")
     print(f"🍪 Cookies: auth_token={'✅' if AUTH_TOKEN else '❌'}, ct0={'✅' if CT0 else '❌'}")
     app.run_polling()
